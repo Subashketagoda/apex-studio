@@ -29,10 +29,9 @@ export default function DigitalPassCard({
   const passRef = useRef<HTMLDivElement>(null);
 
   // Generate QR verification URL
-  const verifyUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/booking/verify/${booking.id}?v=${booking.version || 1}`
-      : `https://subashketagoda.github.io/apex-studio/booking/verify/${booking.id}?v=${booking.version || 1}`;
+  const basePath = typeof window !== "undefined" && window.location.pathname.startsWith("/apex-studio") ? "/apex-studio" : "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://subashketagoda.github.io";
+  const verifyUrl = `${origin}${basePath}/booking/verify/?id=${booking.id}&v=${booking.version || 1}`;
 
   // QR Code image using reliable public QR SVG API
   const qrCodeApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(

@@ -96,10 +96,12 @@ export async function downloadPassAsPNG(booking: Booking): Promise<void> {
   ctx.strokeRect(qrX, qrY, qrBoxSize, qrBoxSize);
 
   // Load and draw QR Code
-  const verifyUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/booking/verify/${booking.id}?v=${booking.version || 1}`
-      : `https://subashketagoda.github.io/apex-studio/booking/verify/${booking.id}?v=${booking.version || 1}`;
+  const basePath =
+    typeof window !== "undefined" && window.location.pathname.startsWith("/apex-studio")
+      ? "/apex-studio"
+      : "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://subashketagoda.github.io";
+  const verifyUrl = `${origin}${basePath}/booking/verify/?id=${booking.id}&v=${booking.version || 1}`;
 
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(
     verifyUrl

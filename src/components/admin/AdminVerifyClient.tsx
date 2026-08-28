@@ -18,9 +18,11 @@ import {
   Sparkles,
   ArrowLeft,
   ExternalLink,
+  Camera,
 } from "lucide-react";
 import { useAdminBookings } from "@/context/AdminBookingsContext";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
+import CameraQRScanner from "@/components/admin/CameraQRScanner";
 
 export default function AdminVerifyClient() {
   const searchParams = useSearchParams();
@@ -31,6 +33,7 @@ export default function AdminVerifyClient() {
 
   const [searchId, setSearchId] = useState(initialId);
   const [activeQuery, setActiveQuery] = useState(initialId);
+  const [cameraActive, setCameraActive] = useState(false);
 
   useEffect(() => {
     if (initialId) {
@@ -39,10 +42,19 @@ export default function AdminVerifyClient() {
     }
   }, [initialId]);
 
-  const handleVerify = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleVerify = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!searchId.trim()) return;
-    const cleanId = searchId.trim().replace(/^.*\/booking\/verify\//, "");
+    const cleanId = searchId.trim().replace(/^.*\/booking\/verify\//, "").replace(/\?.*$/, "");
+    setActiveQuery(cleanId);
+  };
+
+  const handleCameraScan = (decodedText: string) => {
+    setCameraActive(false);
+    // Parse decoded text (could be full URL or direct ID)
+    const match = decodedText.match(/\/booking\/verify\/([A-Za-z0-9\-_]+)/i) || decodedText.match(/(APX-[A-Za-z0-9\-_]+)/i);
+    const cleanId = match ? match[1] : decodedText.trim();
+    setSearchId(cleanId);
     setActiveQuery(cleanId);
   };
 
@@ -77,6 +89,23 @@ export default function AdminVerifyClient() {
         </p>
       </div>
 
+      {/* Camera Scanner Toggle / Viewfinder */}
+      {cameraActive ? (
+        <CameraQRScanner
+          onScanSuccess={handleCameraScan}
+          onClose={() => setCameraActive(false)}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCameraActive(true)}
+          className="btn-primary w-full justify-center !py-3.5 !text-xs !tracking-wider flex items-center gap-2 shadow-lg shadow-accent/25"
+        >
+          <Camera size={16} />
+          <span>OPEN CAMERA QR SCANNER</span>
+        </button>
+      )}
+
       {/* Manual ID / URL Scan Input */}
       <form onSubmit={handleVerify} className="p-4 rounded-sm bg-[#0c0c0c] border border-white/[0.08] shadow-lg flex gap-2">
         <div className="relative flex-1">
@@ -90,7 +119,7 @@ export default function AdminVerifyClient() {
           />
         </div>
         <button type="submit" className="btn-primary !text-xs !py-3 !px-5 whitespace-nowrap">
-          VERIFY PASS
+          VERIFY ID
         </button>
       </form>
 
