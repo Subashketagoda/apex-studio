@@ -52,13 +52,34 @@ export function AdminBookingsProvider({ children }: { children: React.ReactNode 
   const [activities, setActivities] = useState<ActivityLogItem[]>([]);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
 
-  // Initial fetch from REST API
+  // Initial fetch from REST API and localStorage
   const refreshBookings = useCallback(async () => {
+    // 1. Check localStorage first
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem("apex_local_bookings");
+        if (raw) {
+          const localList: Booking[] = JSON.parse(raw);
+          if (Array.isArray(localList) && localList.length > 0) {
+            setBookings(localList);
+          }
+        }
+      } catch {}
+    }
+
     try {
       const res = await fetch("/api/bookings");
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        setBookings(json.data);
+        setBookings((prev) => {
+          const combined = [...json.data];
+          prev.forEach((p) => {
+            if (!combined.some((c) => c.id === p.id)) {
+              combined.unshift(p);
+            }
+          });
+          return combined;
+        });
       }
     } catch (err) {
       console.warn("Notice: REST fetch fallback active:", err);
