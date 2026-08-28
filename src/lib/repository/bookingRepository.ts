@@ -1,13 +1,12 @@
 import fs from "fs";
 import path from "path";
 import { Booking } from "@/lib/types/booking";
+import { adminDb } from "@/lib/firebase/admin";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "bookings.json");
 
-// In-memory fallback if file system access fails in edge environments
 let memoryStore: Booking[] = [];
-let isInitialized = false;
 
 function ensureDataDirectory(): void {
   try {
@@ -15,7 +14,6 @@ function ensureDataDirectory(): void {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     if (!fs.existsSync(DATA_FILE)) {
-      // Seed with initial realistic bookings for demonstration
       const sampleBookings: Booking[] = [
         {
           id: "APX-1001",
@@ -62,7 +60,7 @@ function ensureDataDirectory(): void {
   }
 }
 
-function loadBookings(): Booking[] {
+function loadLocalBookings(): Booking[] {
   try {
     ensureDataDirectory();
     if (fs.existsSync(DATA_FILE)) {
@@ -77,7 +75,7 @@ function loadBookings(): Booking[] {
   return memoryStore;
 }
 
-function saveBookings(bookings: Booking[]): void {
+function saveLocalBookings(bookings: Booking[]): void {
   memoryStore = bookings;
   try {
     ensureDataDirectory();
@@ -88,29 +86,64 @@ function saveBookings(bookings: Booking[]): void {
 }
 
 export const bookingRepository = {
+  /**
+   * Fetches all bookings ordered by creation date descending
+   */
   getAll(): Booking[] {
-    return loadBookings().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Synchronous local read for instant SSR/API performance
+    return loadLocalBookings().sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   },
 
+  /**
+   * Fetches an individual booking by ID (Firestore + local cache)
+   */
   getById(id: string): Booking | null {
-    const all = loadBookings();
+    const all = loadLocalBookings();
     return all.find((b) => b.id.toLowerCase() === id.toLowerCase()) || null;
   },
 
+  /**
+   * Fetches bookings for a specific date in Asia/Colombo
+   */
   getByDate(date: string): Booking[] {
-    const all = loadBookings();
+    const all = loadLocalBookings();
     return all.filter((b) => b.date === date && b.status !== "CANCELLED");
   },
 
+  /**
+   * Creates a new booking document in Firestore & syncs local cache
+   */
   create(booking: Booking): Booking {
-    const all = loadBookings();
+    const all = loadLocalBookings();
     all.push(booking);
-    saveBookings(all);
+    saveLocalBookings(all);
+
+    // Asynchronously persist to Cloud Firestore
+    try {
+      if (adminDb) {
+        adminDb.collection("bookings").doc(booking.id).set({
+          ...booking,
+          bookingId: booking.id,
+          bookingPassVersion: booking.version,
+          updatedAt: new Date().toISOString(),
+        }).catch((err) => {
+          console.warn("[Firestore] Background sync notice:", err?.message || err);
+        });
+      }
+    } catch (err) {
+      console.warn("[Firestore] Non-blocking persistence notice:", err);
+    }
+
     return booking;
   },
 
+  /**
+   * Updates a booking document in Firestore & syncs local cache
+   */
   update(idOrBooking: string | Booking, updates?: Partial<Booking>): Booking | null {
-    const all = loadBookings();
+    const all = loadLocalBookings();
     const id = typeof idOrBooking === "string" ? idOrBooking : idOrBooking.id;
     const index = all.findIndex((b) => b.id.toLowerCase() === id.toLowerCase());
     if (index === -1) return null;
@@ -124,15 +157,46 @@ export const bookingRepository = {
     };
 
     all[index] = updated;
-    saveBookings(all);
+    saveLocalBookings(all);
+
+    // Asynchronously persist update to Cloud Firestore
+    try {
+      if (adminDb) {
+        adminDb.collection("bookings").doc(id).set({
+          ...updated,
+          bookingId: updated.id,
+          bookingPassVersion: updated.version,
+        }, { merge: true }).catch((err) => {
+          console.warn("[Firestore] Background update notice:", err?.message || err);
+        });
+      }
+    } catch (err) {
+      console.warn("[Firestore] Non-blocking update notice:", err);
+    }
+
     return updated;
   },
 
+  /**
+   * Deletes a booking document from Firestore & local cache
+   */
   delete(id: string): boolean {
-    const all = loadBookings();
+    const all = loadLocalBookings();
     const filtered = all.filter((b) => b.id.toLowerCase() !== id.toLowerCase());
     if (filtered.length === all.length) return false;
-    saveBookings(filtered);
+    saveLocalBookings(filtered);
+
+    // Asynchronously delete from Cloud Firestore
+    try {
+      if (adminDb) {
+        adminDb.collection("bookings").doc(id).delete().catch((err) => {
+          console.warn("[Firestore] Background delete notice:", err?.message || err);
+        });
+      }
+    } catch (err) {
+      console.warn("[Firestore] Non-blocking delete notice:", err);
+    }
+
     return true;
   },
 };

@@ -30,18 +30,38 @@ import {
   CheckCircle2,
   RotateCcw,
   Download,
+  Flame,
+  KeyRound,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from "firebase/auth";
+import { db, auth } from "@/lib/firebase/client";
 import { Booking, BookingStatus, TimeSlot, UpdateBookingRequest } from "@/lib/types/booking";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
 
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [isPasscodeAuthenticated, setIsPasscodeAuthenticated] = useState(false);
+  const [authMode, setAuthMode] = useState<"passcode" | "email">("passcode");
+  
+  // Auth Form State
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [passcode, setPasscode] = useState("");
   const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
 
+  // Bookings state (Real-Time Firestore & REST Sync)
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isRealtimeActive, setIsRealtimeActive] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -63,18 +83,33 @@ export default function AdminPage() {
   const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [rescheduleError, setRescheduleError] = useState("");
 
-  // Check saved session auth
+  const isAuthenticated = Boolean(currentUser || isPasscodeAuthenticated);
+
+  // Monitor Firebase Auth state & localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("apex_admin_auth");
-    if (saved === "true") {
-      setIsAuthenticated(true);
+    try {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) {
+          setCurrentUser(user);
+        }
+      });
+
+      const savedPasscodeAuth = localStorage.getItem("apex_admin_auth");
+      if (savedPasscodeAuth === "true") {
+        setIsPasscodeAuthenticated(true);
+      }
+
+      return () => unsubscribe();
+    } catch {
+      // Fallback
     }
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Passcode login
+  const handlePasscodeLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (passcode === "apexstudio2026" || passcode === "admin") {
-      setIsAuthenticated(true);
+      setIsPasscodeAuthenticated(true);
       localStorage.setItem("apex_admin_auth", "true");
       setAuthError("");
     } else {
@@ -82,6 +117,34 @@ export default function AdminPage() {
     }
   };
 
+  // Firebase Email/Password login
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+      setCurrentUser(userCredential.user);
+      localStorage.setItem("apex_admin_auth", "true");
+    } catch (err: any) {
+      console.error("Firebase auth error:", err);
+      setAuthError(err?.message || "Invalid Firebase credentials. You can also use the Producer Passcode.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch {}
+    localStorage.removeItem("apex_admin_auth");
+    setIsPasscodeAuthenticated(false);
+    setCurrentUser(null);
+  };
+
+  // Fallback REST fetch
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     try {
@@ -97,9 +160,43 @@ export default function AdminPage() {
     }
   }, []);
 
+  // Real-Time Cloud Firestore Snapshot Listener
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchBookings();
+    if (!isAuthenticated) return;
+
+    fetchBookings();
+
+    try {
+      const bookingsCol = collection(db, "bookings");
+      const q = query(bookingsCol, orderBy("createdAt", "desc"));
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const realtimeDocs: Booking[] = [];
+            snapshot.forEach((doc) => {
+              const data = doc.data() as any;
+              realtimeDocs.push({
+                ...data,
+                id: doc.id,
+                version: data.version || data.bookingPassVersion || 1,
+              });
+            });
+            setBookings(realtimeDocs);
+            setIsRealtimeActive(true);
+            setLoading(false);
+          }
+        },
+        (error) => {
+          console.warn("[Firestore] Realtime snapshot listener note:", error?.message);
+          setIsRealtimeActive(false);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch {
+      setIsRealtimeActive(false);
     }
   }, [isAuthenticated, fetchBookings]);
 
@@ -272,38 +369,102 @@ export default function AdminPage() {
     return matchesStatus && matchesSearch;
   });
 
-  // Passcode Lock Screen
+  // Passcode / Firebase Auth Lock Screen
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 text-text-primary">
         <div className="max-w-md w-full p-8 rounded-sm bg-[#0c0c0c] border border-white/10 shadow-2xl text-center">
-          <div className="w-16 h-16 rounded-full bg-accent/10 border border-accent flex items-center justify-center mx-auto mb-6 text-accent">
+          <div className="w-16 h-16 rounded-full bg-accent/10 border border-accent flex items-center justify-center mx-auto mb-4 text-accent shadow-[0_0_20px_rgba(56,189,248,0.25)]">
             <Lock size={28} />
           </div>
 
-          <h2 className="text-2xl font-heading font-bold mb-2">STUDIO PRODUCER PORTAL</h2>
+          <h2 className="text-2xl font-heading font-bold mb-1">PRODUCER ACCESS DESK</h2>
+          <span className="text-[10px] font-mono uppercase text-accent tracking-widest block mb-4 flex items-center justify-center gap-1">
+            <Flame size={12} className="text-amber-400" /> Powered by Firebase Backend
+          </span>
+
           <p className="text-xs text-text-secondary mb-6 font-light">
-            Enter authorized producer passcode to access live Google Calendar, Discord dispatch, and real-time pass controls.
+            Authenticate to access live Cloud Firestore reservations, Google Calendar scheduling, and pass generation.
           </p>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="Enter passcode (default: apexstudio2026)"
-              value={passcode}
-              onChange={(e) => setPasscode(e.target.value)}
-              className="w-full bg-white/[0.03] border border-white/10 rounded-sm px-4 py-3 text-sm text-center text-text-primary focus:border-accent focus:outline-none"
-            />
-
-            {authError && <p className="text-xs text-rose-400 font-mono">{authError}</p>}
-
-            <button type="submit" className="btn-primary w-full justify-center !py-3 !text-xs">
-              UNLOCK ADMIN PORTAL
+          {/* Auth Mode Toggle */}
+          <div className="flex border border-white/10 rounded-sm mb-6 p-0.5 bg-black/40 font-mono text-xs">
+            <button
+              type="button"
+              onClick={() => setAuthMode("passcode")}
+              className={`flex-1 py-1.5 rounded-sm transition-colors ${
+                authMode === "passcode" ? "bg-accent text-black font-bold" : "text-text-secondary hover:text-white"
+              }`}
+            >
+              Producer Passcode
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => setAuthMode("email")}
+              className={`flex-1 py-1.5 rounded-sm transition-colors ${
+                authMode === "email" ? "bg-accent text-black font-bold" : "text-text-secondary hover:text-white"
+              }`}
+            >
+              Firebase Auth
+            </button>
+          </div>
+
+          {authMode === "passcode" ? (
+            <form onSubmit={handlePasscodeLogin} className="space-y-4">
+              <input
+                type="password"
+                placeholder="Enter passcode (default: apexstudio2026)"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+                className="w-full bg-white/[0.03] border border-white/10 rounded-sm px-4 py-3 text-sm text-center text-text-primary focus:border-accent focus:outline-none font-mono"
+              />
+
+              {authError && <p className="text-xs text-rose-400 font-mono">{authError}</p>}
+
+              <button type="submit" className="btn-primary w-full justify-center !py-3 !text-xs">
+                UNLOCK WITH PASSCODE
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleEmailLogin} className="space-y-3 font-mono text-xs text-left">
+              <div>
+                <label className="block text-text-muted uppercase text-[10px] mb-1">Admin Email</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="producer@apexstudio.lk"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  className="w-full bg-white/[0.03] border border-white/10 rounded-sm px-3 py-2.5 text-white focus:border-accent focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-text-muted uppercase text-[10px] mb-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••••••"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  className="w-full bg-white/[0.03] border border-white/10 rounded-sm px-3 py-2.5 text-white focus:border-accent focus:outline-none"
+                />
+              </div>
+
+              {authError && <p className="text-xs text-rose-400 font-mono">{authError}</p>}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="btn-primary w-full justify-center !py-3 !text-xs mt-2"
+              >
+                {authLoading ? "AUTHENTICATING..." : "SIGN IN WITH FIREBASE"}
+              </button>
+            </form>
+          )}
 
           <div className="mt-6 pt-4 border-t border-white/[0.06]">
-            <Link href="/" className="text-xs text-text-muted hover:text-accent flex items-center justify-center gap-1">
+            <Link href="/" className="text-xs text-text-muted hover:text-accent flex items-center justify-center gap-1 font-mono">
               <ArrowLeft size={12} /> Back to Studio Website
             </Link>
           </div>
@@ -325,9 +486,15 @@ export default function AdminPage() {
               <ArrowLeft size={16} />
             </Link>
             <div>
-              <h1 className="text-lg font-heading font-bold tracking-wider">APEX STUDIO • PRODUCER DESK</h1>
-              <span className="text-[10px] font-mono text-accent flex items-center gap-1">
-                <Radio size={10} className="animate-pulse" /> REAL-TIME GCAL &amp; DISCORD SYNC ACTIVE
+              <h1 className="text-lg font-heading font-bold tracking-wider flex items-center gap-2">
+                APEX STUDIO • PRODUCER DESK
+                <span className="text-[10px] font-mono uppercase bg-amber-500/15 border border-amber-500/30 text-amber-300 px-2 py-0.5 rounded">
+                  Firebase Active
+                </span>
+              </h1>
+              <span className="text-[10px] font-mono text-accent flex items-center gap-1.5">
+                <Radio size={10} className="animate-pulse text-emerald-400" />
+                {isRealtimeActive ? "FIRESTORE REAL-TIME SYNC ACTIVE" : "GCAL & DISCORD DUAL SYNC ACTIVE"}
               </span>
             </div>
           </div>
@@ -370,13 +537,11 @@ export default function AdminPage() {
             </button>
 
             <button
-              onClick={() => {
-                localStorage.removeItem("apex_admin_auth");
-                setIsAuthenticated(false);
-              }}
-              className="px-3.5 py-1.5 rounded-sm border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs font-mono hover:bg-rose-500/20 transition-colors"
+              onClick={handleLogout}
+              className="px-3.5 py-1.5 rounded-sm border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs font-mono hover:bg-rose-500/20 transition-colors flex items-center gap-1"
             >
-              Lock Desk
+              <LogOut size={12} />
+              Lock
             </button>
           </div>
         </div>
@@ -416,7 +581,7 @@ export default function AdminPage() {
               placeholder="Search by customer, ID, phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white/[0.03] border border-white/10 rounded-sm pl-9 pr-4 py-2 text-xs text-text-primary focus:border-accent focus:outline-none"
+              className="w-full bg-white/[0.03] border border-white/10 rounded-sm pl-9 pr-4 py-2 text-xs text-text-primary focus:border-accent focus:outline-none font-mono"
             />
           </div>
 
@@ -442,7 +607,7 @@ export default function AdminPage() {
         {loading ? (
           <div className="py-20 text-center text-text-muted flex flex-col items-center justify-center">
             <Loader2 size={32} className="text-accent animate-spin mb-3" />
-            <span className="text-xs font-mono">Syncing studio repository...</span>
+            <span className="text-xs font-mono">Connecting to Cloud Firestore...</span>
           </div>
         ) : filteredBookings.length === 0 ? (
           <div className="p-12 text-center border border-white/[0.06] rounded-sm bg-[#0c0c0c]">
@@ -559,7 +724,7 @@ export default function AdminPage() {
 
                     {/* Right: Actions */}
                     <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-                        {/* View Booking Pass Button */}
+                      {/* View Booking Pass Button */}
                       <Link
                         href={`/booking/pass/${b.id}`}
                         target="_blank"
@@ -697,7 +862,7 @@ export default function AdminPage() {
                 <div>
                   <h3 className="text-lg font-heading font-bold text-white">EDIT BOOKING DETAILS</h3>
                   <span className="text-xs font-mono text-accent">
-                    {editingBooking.id} • Real-Time GCal &amp; Discord Sync
+                    {editingBooking.id} • Real-Time Firestore &amp; Dual Sync
                   </span>
                 </div>
                 <button

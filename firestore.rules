@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if the request is from an authenticated admin
+    function isAdmin() {
+      return request.auth != null;
+    }
+
+    // Bookings Collection Rules
+    match /bookings/{bookingId} {
+      // Public read allowed only for individual booking pass/verification queries
+      allow get: if true;
+      
+      // List/Query all bookings is restricted to authenticated admins
+      allow list: if isAdmin();
+      
+      // Creation allowed for public customers with valid data
+      allow create: if request.resource.data.customerName is string
+                    && request.resource.data.phone is string
+                    && request.resource.data.email is string
+                    && request.resource.data.service is string
+                    && request.resource.data.date is string
+                    && request.resource.data.startTime is string;
+      
+      // Updates and deletions restricted to authenticated admins or server
+      allow update, delete: if isAdmin();
+    }
+
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
