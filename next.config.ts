@@ -4,11 +4,12 @@ const isGithubPages = process.env.GITHUB_PAGES === "true";
 const basePath = isGithubPages ? "/apex-studio" : "";
 
 const nextConfig: NextConfig = {
+  output: isGithubPages ? "export" : undefined,
   basePath: basePath || undefined,
   assetPrefix: basePath ? `${basePath}/` : undefined,
-  trailingSlash: isGithubPages ? true : false,
+  trailingSlash: true,
   images: {
-    unoptimized: isGithubPages ? true : false,
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
