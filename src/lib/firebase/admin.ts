@@ -1,14 +1,19 @@
 import * as admin from "firebase-admin";
 
-const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "apex-studio-colombo";
+const projectId =
+  process.env.FIREBASE_PROJECT_ID ||
+  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+  "apex-studio-852a4";
+
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 const privateKey = process.env.FIREBASE_PRIVATE_KEY
   ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
   : undefined;
+
 const storageBucket =
   process.env.FIREBASE_STORAGE_BUCKET ||
   process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
-  `${projectId}.appspot.com`;
+  "apex-studio-852a4.firebasestorage.app";
 
 export function getFirebaseAdminApp(): admin.app.App {
   if (admin.apps.length > 0 && admin.apps[0]) {
