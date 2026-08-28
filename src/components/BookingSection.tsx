@@ -20,12 +20,14 @@ import {
   ShieldCheck,
   CalendarCheck,
   Layers,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { Booking, TimeSlot } from "@/lib/types/booking";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
 import { getClientAvailableSlots, createClientBooking } from "@/lib/services/clientBookingService";
 import DigitalPassCard from "@/components/DigitalPassCard";
+import { downloadPassAsPNG } from "@/lib/utils/downloadPassImage";
 
 const services = [
   {
@@ -89,6 +91,7 @@ export default function BookingSection() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+  const [downloadingPass, setDownloadingPass] = useState(false);
 
   // Initialize minimum date to today in YYYY-MM-DD
   const todayStr = new Date().toISOString().split("T")[0];
@@ -619,26 +622,48 @@ export default function BookingSection() {
               </div>
 
               {/* Embedded Live Digital VIP Pass */}
-              <div className="flex justify-center py-2">
+              <div className="flex flex-col items-center justify-center py-2 space-y-3">
                 <DigitalPassCard booking={confirmedBooking} />
+
+                {/* Direct High-Resolution 1200x1800 PNG Download Button */}
+                <button
+                  type="button"
+                  disabled={downloadingPass}
+                  onClick={async () => {
+                    setDownloadingPass(true);
+                    try {
+                      await downloadPassAsPNG(confirmedBooking);
+                    } catch (err) {
+                      console.error("Pass download error:", err);
+                    } finally {
+                      setDownloadingPass(false);
+                    }
+                  }}
+                  className="btn-primary w-full max-w-[380px] justify-center !py-3.5 !text-xs !tracking-wider flex items-center gap-2 shadow-lg shadow-accent/25"
+                >
+                  <Download size={15} />
+                  <span>
+                    {downloadingPass ? "GENERATING 1200x1800 HD PASS..." : "DOWNLOAD PASS (PNG IMAGE)"}
+                  </span>
+                </button>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
+              {/* Secondary Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
                 <Link
                   href={`/booking/pass/${confirmedBooking.id}`}
-                  className="btn-primary w-full sm:w-auto justify-center !py-3.5 !px-7 !text-xs group"
+                  className="px-5 py-3 rounded-sm bg-white/[0.04] border border-white/10 hover:border-accent text-xs font-mono text-white flex items-center justify-center gap-1.5 transition-colors w-full sm:w-auto"
                 >
-                  <Sparkles size={14} className="text-black" />
-                  <span>OPEN FULL PASS PAGE</span>
-                  <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                  <Sparkles size={14} className="text-accent" />
+                  <span>FULL PASS PAGE</span>
+                  <ArrowRight size={14} />
                 </Link>
 
                 <a
                   href={getGoogleCalendarUrl(confirmedBooking)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-outline w-full sm:w-auto justify-center !py-3.5 !px-5 !text-xs"
+                  className="px-5 py-3 rounded-sm bg-white/[0.04] border border-white/10 hover:border-accent text-xs font-mono text-white flex items-center justify-center gap-1.5 transition-colors w-full sm:w-auto"
                 >
                   <CalendarCheck size={14} className="text-accent" />
                   <span>ADD TO CALENDAR</span>
@@ -648,7 +673,7 @@ export default function BookingSection() {
                   href={`https://wa.me/94770000000?text=Hi%20Apex%20Studio,%20here%20is%20my%20confirmed%20booking%20pass%20${confirmedBooking.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-outline w-full sm:w-auto justify-center !py-3.5 !px-5 !text-xs"
+                  className="px-5 py-3 rounded-sm bg-white/[0.04] border border-white/10 hover:border-accent text-xs font-mono text-white flex items-center justify-center gap-1.5 transition-colors w-full sm:w-auto"
                 >
                   <MessageSquare size={14} className="text-emerald-400" />
                   <span>PRODUCER CHAT</span>

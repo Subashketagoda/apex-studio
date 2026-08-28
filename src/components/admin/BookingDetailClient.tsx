@@ -29,6 +29,8 @@ import { useAdminBookings } from "@/context/AdminBookingsContext";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
 import { BookingStatus, UpdateBookingRequest, TimeSlot } from "@/lib/types/booking";
 import { getClientAvailableSlots } from "@/lib/services/clientBookingService";
+import DigitalPassCard from "@/components/DigitalPassCard";
+import { downloadPassAsPNG } from "@/lib/utils/downloadPassImage";
 
 interface BookingDetailClientProps {
   id: string;
@@ -394,25 +396,20 @@ export default function BookingDetailClient({ id }: BookingDetailClientProps) {
           </div>
 
           <div className="p-4 rounded-sm bg-[#0c0c0c] border border-white/[0.08] shadow-xl flex flex-col items-center space-y-4">
-            {/* 1200x1800 Portrait Pass Container */}
-            <div className="relative w-full max-w-[340px] aspect-[1200/1800] rounded-sm overflow-hidden border border-white/15 bg-gradient-to-b from-[#111111] to-[#080808] shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={passImageUrl}
-                alt={`APEX STUDIO Pass ${booking.id}`}
-                className="w-full h-full object-contain"
-              />
+            {/* Live Digital VIP Pass Container */}
+            <div className="w-full flex justify-center py-1">
+              <DigitalPassCard booking={booking} className="!max-w-[340px]" />
             </div>
 
             {/* Pass Actions */}
             <div className="w-full space-y-2">
-              <a
-                href={`/api/bookings/${booking.id}/pass-image?download=true&v=${booking.version || 1}`}
-                download={`APEX-STUDIO-BOOKING-${booking.id}.png`}
+              <button
+                type="button"
+                onClick={() => downloadPassAsPNG(booking)}
                 className="btn-primary w-full justify-center !py-3 !text-xs flex items-center gap-2"
               >
                 <Download size={14} /> DOWNLOAD 1200x1800 PNG
-              </a>
+              </button>
 
               <div className="grid grid-cols-2 gap-2">
                 <Link

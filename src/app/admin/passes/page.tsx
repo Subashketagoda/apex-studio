@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { useAdminBookings } from "@/context/AdminBookingsContext";
 import { formatTo12Hour } from "@/lib/constants";
+import { downloadPassAsPNG } from "@/lib/utils/downloadPassImage";
+import DigitalPassCard from "@/components/DigitalPassCard";
 
 export default function AdminPassesPage() {
   const { bookings, loading, regeneratePass, refreshBookings } = useAdminBookings();
@@ -118,13 +120,8 @@ export default function AdminPassesPage() {
               </div>
 
               {/* Pass Thumbnail Container */}
-              <div className="relative w-full aspect-[1200/1800] max-h-[300px] rounded-sm overflow-hidden border border-white/10 bg-black/60 mx-auto flex items-center justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={passImageUrl}
-                  alt={`APEX STUDIO Pass ${b.id}`}
-                  className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
-                />
+              <div className="flex justify-center overflow-hidden py-1">
+                <DigitalPassCard booking={b} className="!max-w-[280px]" />
               </div>
 
               {/* Session Specs */}
@@ -143,13 +140,13 @@ export default function AdminPassesPage() {
 
               {/* Action Buttons */}
               <div className="space-y-2 pt-2 border-t border-white/[0.06]">
-                <a
-                  href={`/api/bookings/${b.id}/pass-image?download=true&v=${b.version || 1}`}
-                  download={`APEX-STUDIO-PASS-${b.id}.png`}
+                <button
+                  type="button"
+                  onClick={() => downloadPassAsPNG(b)}
                   className="btn-primary w-full justify-center !py-2.5 !text-xs flex items-center gap-1.5"
                 >
                   <Download size={13} /> DOWNLOAD HD PASS (PNG)
-                </a>
+                </button>
 
                 <div className="grid grid-cols-2 gap-2">
                   <Link

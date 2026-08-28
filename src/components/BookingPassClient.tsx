@@ -25,6 +25,7 @@ import {
 import { Booking } from "@/lib/types/booking";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
 import DigitalPassCard from "@/components/DigitalPassCard";
+import { downloadPassAsPNG } from "@/lib/utils/downloadPassImage";
 
 interface BookingPassClientProps {
   id: string;
@@ -35,6 +36,19 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadPNG = async () => {
+    if (!booking) return;
+    setDownloading(true);
+    try {
+      await downloadPassAsPNG(booking);
+    } catch (err) {
+      console.error("Pass download error:", err);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -249,10 +263,23 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
               </h3>
 
               <button
-                onClick={() => window.print()}
-                className="btn-primary w-full justify-center !py-3.5 !text-xs !tracking-wider flex items-center gap-2 shadow-lg shadow-accent/15"
+                type="button"
+                disabled={downloading}
+                onClick={handleDownloadPNG}
+                className="btn-primary w-full justify-center !py-3.5 !text-xs !tracking-wider flex items-center gap-2 shadow-lg shadow-accent/25"
               >
-                <Printer size={16} />
+                <Download size={16} />
+                <span>
+                  {downloading ? "GENERATING 1200x1800 HD PASS..." : "DOWNLOAD PASS (PNG IMAGE)"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2.5 rounded-sm bg-white/[0.04] border border-white/10 hover:border-accent text-xs font-mono text-white transition-colors flex items-center justify-center gap-1.5 w-full"
+              >
+                <Printer size={15} />
                 PRINT / SAVE AS PDF (HD)
               </button>
 
