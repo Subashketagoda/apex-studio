@@ -5,6 +5,12 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+export const dynamic = "force-static";
+
+export function generateStaticParams() {
+  return [{ id: "APX-1001" }, { id: "APX-1002" }];
+}
+
 /**
  * POST /api/bookings/[id]/sync
  * On-demand retry synchronization with Google Calendar & Discord

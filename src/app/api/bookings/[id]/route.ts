@@ -7,6 +7,12 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+export const dynamic = "force-static";
+
+export function generateStaticParams() {
+  return [{ id: "APX-1001" }, { id: "APX-1002" }];
+}
+
 /**
  * GET /api/bookings/[id]
  */

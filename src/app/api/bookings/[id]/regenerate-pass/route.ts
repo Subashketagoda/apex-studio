@@ -5,6 +5,12 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+export const dynamic = "force-static";
+
+export function generateStaticParams() {
+  return [{ id: "APX-1001" }, { id: "APX-1002" }];
+}
+
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;

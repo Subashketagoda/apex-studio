@@ -3,6 +3,8 @@ import { bookingService } from "@/lib/services/bookingService";
 import { bookingRepository } from "@/lib/repository/bookingRepository";
 import { CreateBookingRequest } from "@/lib/types/booking";
 
+export const dynamic = "force-static";
+
 /**
  * GET /api/bookings
  * Returns all bookings ordered by creation date

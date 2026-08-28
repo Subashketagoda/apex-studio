@@ -3,17 +3,25 @@ import { bookingService } from "@/lib/services/bookingService";
 import { STUDIO_OPERATING_HOURS, STUDIO_TIMEZONE } from "@/lib/constants";
 import { AvailabilityResponse } from "@/lib/types/booking";
 
-export async function GET(request: NextRequest) {
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    const date = searchParams.get("date");
-    const duration = parseInt(searchParams.get("duration") || "120", 10);
+export const dynamic = "force-static";
 
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return NextResponse.json(
-        { success: false, error: "Valid date parameter (YYYY-MM-DD) is required." },
-        { status: 400 }
-      );
+export async function GET(request?: NextRequest) {
+  try {
+    let date: string | null = null;
+    let duration = 120;
+
+    try {
+      if (request?.nextUrl) {
+        const searchParams = request.nextUrl.searchParams;
+        date = searchParams.get("date");
+        duration = parseInt(searchParams.get("duration") || "120", 10);
+      }
+    } catch {}
+
+    if (!date) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      date = tomorrow.toISOString().split("T")[0];
     }
 
     const slots = await bookingService.getAvailableSlots(date, duration);

@@ -10,6 +10,12 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+export const dynamic = "force-static";
+
+export function generateStaticParams() {
+  return [{ id: "APX-1001" }, { id: "APX-1002" }];
+}
+
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
@@ -19,8 +25,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return new NextResponse("Booking not found", { status: 404 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const isDownload = searchParams.get("download") === "true";
+    let isDownload = false;
+    try {
+      if (request?.url) {
+        const parsedUrl = new URL(request.url);
+        isDownload = parsedUrl.searchParams.get("download") === "true";
+      }
+    } catch {}
 
     // Format date nicely: e.g. "30 AUGUST 2026"
     let formattedDate = booking.date;
@@ -43,7 +54,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const passVersion = booking.version || 1;
 
     // Build absolute URL for QR verification
-    const host = request.headers.get("host") || "localhost:3000";
+    let host = process.env.NEXT_PUBLIC_SITE_URL ? new URL(process.env.NEXT_PUBLIC_SITE_URL).host : "localhost:3000";
+    try {
+      if (request?.headers) {
+        host = request.headers.get("host") || host;
+      }
+    } catch {}
     const protocol = host.startsWith("localhost") ? "http" : "https";
     const verifyUrl = `${protocol}://${host}/booking/verify/${booking.id}?v=${passVersion}`;
 
