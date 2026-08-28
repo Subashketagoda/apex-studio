@@ -28,6 +28,7 @@ import {
 import { useAdminBookings } from "@/context/AdminBookingsContext";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
 import { BookingStatus, UpdateBookingRequest, TimeSlot } from "@/lib/types/booking";
+import { getClientAvailableSlots } from "@/lib/services/clientBookingService";
 
 interface BookingDetailClientProps {
   id: string;
@@ -66,13 +67,11 @@ export default function BookingDetailClient({ id }: BookingDetailClientProps) {
     const fetchSlots = async () => {
       setSlotsLoading(true);
       try {
-        const res = await fetch(
-          `/api/bookings/availability?date=${rescheduleDate}&duration=${booking.durationMinutes}`
+        const slots = await getClientAvailableSlots(
+          rescheduleDate,
+          booking.durationMinutes || 120
         );
-        const json = await res.json();
-        if (json.success && json.data) {
-          setRescheduleSlots(json.data.slots || []);
-        }
+        setRescheduleSlots(slots || []);
       } catch (err) {
         console.error("Reschedule slots error:", err);
       } finally {

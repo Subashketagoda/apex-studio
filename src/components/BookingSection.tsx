@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Booking, TimeSlot } from "@/lib/types/booking";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
+import { getClientAvailableSlots, createClientBooking } from "@/lib/services/clientBookingService";
 
 const services = [
   {
@@ -101,31 +102,35 @@ export default function BookingSection() {
   useEffect(() => {
     if (!selectedDate) return;
 
+    let isMounted = true;
     const fetchSlots = async () => {
       setLoadingSlots(true);
       setSlotsError("");
       setSelectedSlot("");
 
       try {
-        const res = await fetch(
-          `/api/bookings/availability?date=${selectedDate}&duration=${duration}`
-        );
-        const data = await res.json();
-
-        if (data.success && data.data) {
-          setSlots(data.data.slots || []);
-        } else {
-          setSlotsError(data.error || "Unable to check studio schedule.");
+        const availableSlots = await getClientAvailableSlots(selectedDate, duration);
+        if (isMounted) {
+          if (availableSlots && availableSlots.length > 0) {
+            setSlots(availableSlots);
+          } else {
+            setSlotsError("No soundstage slots available on this date.");
+          }
         }
       } catch (err) {
         console.error("Availability query error:", err);
-        setSlotsError("Network connection error. Please try again.");
+        if (isMounted) {
+          setSlotsError("Unable to calculate studio schedule. Please try another date.");
+        }
       } finally {
-        setLoadingSlots(false);
+        if (isMounted) setLoadingSlots(false);
       }
     };
 
     fetchSlots();
+    return () => {
+      isMounted = false;
+    };
   }, [selectedDate, duration]);
 
   // Handle final submission
@@ -137,35 +142,29 @@ export default function BookingSection() {
     setSubmitError("");
 
     try {
-      const res = await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerName,
-          phone,
-          email,
-          service: selectedService,
-          date: selectedDate,
-          startTime: selectedSlot,
-          durationMinutes: duration,
-          numberOfPeople,
-          notes,
-        }),
+      const result = await createClientBooking({
+        customerName,
+        phone,
+        email,
+        service: selectedService,
+        date: selectedDate,
+        startTime: selectedSlot,
+        durationMinutes: duration,
+        numberOfPeople,
+        notes,
       });
 
-      const data = await res.json();
-
-      if (res.ok && data.success && data.data) {
-        setConfirmedBooking(data.data);
+      if (result.success && result.data) {
+        setConfirmedBooking(result.data);
         setStep(4);
       } else {
         setSubmitError(
-          data.error || "Unable to complete reservation. Please select another slot."
+          result.error || "Unable to complete reservation. Please select another slot."
         );
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Booking submission error:", err);
-      setSubmitError("Failed to connect to studio server. Please try again.");
+      setSubmitError(err?.message || "Failed to confirm studio reservation. Please try again.");
     } finally {
       setSubmitting(false);
     }

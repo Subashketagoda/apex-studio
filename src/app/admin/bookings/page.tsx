@@ -26,6 +26,7 @@ import {
 import { useAdminBookings } from "@/context/AdminBookingsContext";
 import { Booking, BookingStatus, UpdateBookingRequest, TimeSlot } from "@/lib/types/booking";
 import { formatTo12Hour } from "@/lib/constants";
+import { getClientAvailableSlots } from "@/lib/services/clientBookingService";
 
 export default function AdminBookingsPage() {
   const {
@@ -65,13 +66,11 @@ export default function AdminBookingsPage() {
     const fetchSlots = async () => {
       setRescheduleLoading(true);
       try {
-        const res = await fetch(
-          `/api/bookings/availability?date=${newRescheduleDate}&duration=${reschedulingBooking.durationMinutes}`
+        const slots = await getClientAvailableSlots(
+          newRescheduleDate,
+          reschedulingBooking.durationMinutes || 120
         );
-        const json = await res.json();
-        if (json.success && json.data) {
-          setAvailableSlots(json.data.slots || []);
-        }
+        setAvailableSlots(slots || []);
       } catch (err) {
         console.error("Failed to load reschedule slots:", err);
       } finally {
