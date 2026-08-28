@@ -21,9 +21,11 @@ import {
   CalendarCheck,
   Layers,
 } from "lucide-react";
+import Link from "next/link";
 import { Booking, TimeSlot } from "@/lib/types/booking";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
 import { getClientAvailableSlots, createClientBooking } from "@/lib/services/clientBookingService";
+import DigitalPassCard from "@/components/DigitalPassCard";
 
 const services = [
   {
@@ -616,49 +618,21 @@ export default function BookingSection() {
                 </span>
               </div>
 
-              {/* Confirmation Details Card */}
-              <div className="max-w-lg mx-auto bg-[#141414] border border-white/10 rounded-sm p-6 text-left space-y-3 font-mono text-xs">
-                <div className="flex justify-between border-b border-white/[0.06] pb-2.5">
-                  <span className="text-text-muted uppercase">Booking Reference:</span>
-                  <span className="text-accent font-bold tracking-wider">
-                    {confirmedBooking.id}
-                  </span>
-                </div>
-
-                <div className="flex justify-between border-b border-white/[0.06] pb-2.5">
-                  <span className="text-text-muted uppercase">Service:</span>
-                  <span className="text-white font-medium">{confirmedBooking.service}</span>
-                </div>
-
-                <div className="flex justify-between border-b border-white/[0.06] pb-2.5">
-                  <span className="text-text-muted uppercase">Date &amp; Time:</span>
-                  <span className="text-white font-medium">
-                    {confirmedBooking.date} • {formatTo12Hour(confirmedBooking.startTime)} –{" "}
-                    {formatTo12Hour(confirmedBooking.endTime)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between border-b border-white/[0.06] pb-2.5">
-                  <span className="text-text-muted uppercase">Host Name:</span>
-                  <span className="text-white font-medium">{confirmedBooking.customerName}</span>
-                </div>
-
-                <div className="flex justify-between pt-1">
-                  <span className="text-text-muted uppercase">Location:</span>
-                  <span className="text-white/80">Apex Soundstage, Colombo (UTC+05:30)</span>
-                </div>
+              {/* Embedded Live Digital VIP Pass */}
+              <div className="flex justify-center py-2">
+                <DigitalPassCard booking={confirmedBooking} />
               </div>
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
-                <a
+                <Link
                   href={`/booking/pass/${confirmedBooking.id}`}
                   className="btn-primary w-full sm:w-auto justify-center !py-3.5 !px-7 !text-xs group"
                 >
                   <Sparkles size={14} className="text-black" />
-                  <span>VIEW BOOKING PASS</span>
+                  <span>OPEN FULL PASS PAGE</span>
                   <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-                </a>
+                </Link>
 
                 <a
                   href={getGoogleCalendarUrl(confirmedBooking)}

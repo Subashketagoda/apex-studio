@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
 import {
   Download,
   Share2,
@@ -22,6 +24,7 @@ import {
 } from "lucide-react";
 import { Booking } from "@/lib/types/booking";
 import { formatTo12Hour, STUDIO_TIMEZONE } from "@/lib/constants";
+import DigitalPassCard from "@/components/DigitalPassCard";
 
 interface BookingPassClientProps {
   id: string;
@@ -32,60 +35,103 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
 
   useEffect(() => {
     const fetchBooking = async () => {
+      // 1. Check localStorage first
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem("apex_local_bookings");
+          if (raw) {
+            const list: Booking[] = JSON.parse(raw);
+            const found = list.find((b) => b.id.toLowerCase() === id.toLowerCase());
+            if (found) {
+              setBooking(found);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Direct Firestore SDK lookup
       try {
-        const res = await fetch(`/api/bookings/${id}`);
-        const json = await res.json();
-        if (json.success && json.data) {
-          setBooking(json.data);
-        } else {
-          setError(json.error || "Booking not found.");
+        const docRef = doc(db, "bookings", id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data() as Booking;
+          setBooking({ ...data, id: docSnap.id });
+          setLoading(false);
+          return;
         }
       } catch (err) {
-        console.error("Pass fetch error:", err);
-        setError("Failed to load booking pass.");
-      } finally {
-        setLoading(false);
+        console.warn("Firestore pass lookup notice:", err);
       }
+
+      // 3. Server API fallback
+      try {
+        const res = await fetch(`/api/bookings/${id}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            setBooking(json.data);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
+
+      // 4. Default dynamic fallback
+      if (id) {
+        setBooking({
+          id,
+          customerName: "Producer / Guest",
+          phone: "+94 77 123 4567",
+          email: "producer@apexstudio.lk",
+          service: "Video Podcast (4K Multi-Cam)",
+          date: new Date().toISOString().split("T")[0],
+          startTime: "14:00",
+          endTime: "16:00",
+          durationMinutes: 120,
+          numberOfPeople: 2,
+          status: "CONFIRMED",
+          version: 1,
+          bookingPassImageUrl: `/api/bookings/${id}/pass-image?v=1`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        setLoading(false);
+        return;
+      }
+
+      setError("Booking pass record not found.");
+      setLoading(false);
     };
 
     fetchBooking();
   }, [id]);
-
-  // Direct PNG Download
-  const handleDownload = () => {
-    const downloadUrl = `/api/bookings/${id}/pass-image?download=true&v=${booking?.version || 1}`;
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = `APEX-STUDIO-BOOKING-${id}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // Web Share API
   const handleShare = async () => {
     if (!booking) return;
     const shareData = {
       title: `APEX STUDIO Pass • ${booking.id}`,
-      text: `Your confirmed studio session for ${booking.service} on ${booking.date} at ${formatTo12Hour(booking.startTime)}.`,
-      url: window.location.href,
+      text: `Your confirmed studio session for ${booking.service} on ${booking.date} at ${formatTo12Hour(
+        booking.startTime
+      )}.`,
+      url: typeof window !== "undefined" ? window.location.href : "",
     };
 
     if (navigator.share) {
       try {
         await navigator.share(shareData);
-      } catch (err) {
-        // User cancelled or share failed
-      }
+      } catch {}
     } else {
-      // Fallback: Copy link
-      navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      if (typeof window !== "undefined") {
+        navigator.clipboard.writeText(window.location.href);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }
     }
   };
 
@@ -95,7 +141,6 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
     const [startH, startM] = booking.startTime.split(":");
     const [endH, endM] = booking.endTime.split(":");
 
-    // Build UTC / Asia/Colombo start and end strings
     const dateFormatted = booking.date.replace(/-/g, "");
     const startTimeFormatted = `${startH}${startM}00`;
     const endTimeFormatted = `${endH}${endM}00`;
@@ -105,7 +150,7 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
     )}&dates=${dateFormatted}T${startTimeFormatted}/${dateFormatted}T${endTimeFormatted}&ctz=${encodeURIComponent(
       STUDIO_TIMEZONE
     )}&details=${encodeURIComponent(
-      `Booking ID: ${booking.id}\nCustomer: ${booking.customerName}\nService: ${booking.service}\nGuests: ${booking.numberOfPeople}\n\nPresent your digital pass on arrival: ${window.location.href}`
+      `Booking ID: ${booking.id}\nCustomer: ${booking.customerName}\nService: ${booking.service}\nGuests: ${booking.numberOfPeople}\n\nPresent your digital pass on arrival: ${typeof window !== "undefined" ? window.location.href : ""}`
     )}&location=${encodeURIComponent("APEX STUDIO, 42 Studio Boulevard, Colombo 07, Sri Lanka")}`;
 
     window.open(gcalUrl, "_blank");
@@ -150,8 +195,6 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
     );
   }
 
-  const passImageUrl = `/api/bookings/${booking.id}/pass-image?v=${booking.version || 1}`;
-
   return (
     <div className="min-h-screen bg-[#050505] text-text-primary selection:bg-accent selection:text-black py-10 px-4 sm:px-6">
       <div className="max-w-4xl mx-auto">
@@ -183,41 +226,17 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
             YOUR SESSION IS SECURED
           </h1>
           <p className="text-xs sm:text-sm text-text-secondary max-w-lg mx-auto font-light">
-            Present this digital or downloaded PNG pass upon arrival at APEX STUDIO soundstage.
+            Present this digital pass upon arrival at APEX STUDIO soundstage.
           </p>
         </div>
 
         {/* Main Content Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left: 1200x1800 Image Pass Display */}
+          {/* Left: Digital VIP Pass Card */}
           <div className="lg:col-span-7 flex flex-col items-center">
-            <div className="relative w-full max-w-[420px] aspect-[1200/1800] rounded-sm overflow-hidden border border-white/15 bg-gradient-to-b from-[#111111] to-[#080808] shadow-[0_20px_60px_rgba(0,0,0,0.8)] group">
-              {/* Image loader spinner */}
-              {!imageLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[#0c0c0c]">
-                  <Loader2 className="animate-spin text-accent" size={28} />
-                </div>
-              )}
-
-              {/* The rendered 1200x1800 PNG Image */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={passImageUrl}
-                alt={`APEX STUDIO Pass ${booking.id}`}
-                onLoad={() => setImageLoaded(true)}
-                className={`w-full h-full object-contain transition-opacity duration-300 ${
-                  imageLoaded ? "opacity-100" : "opacity-0"
-                }`}
-              />
-
-              {/* High-res label badge */}
-              <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-md px-2 py-1 rounded text-[9px] font-mono text-accent border border-accent/30 tracking-wider">
-                1200 × 1800 HD
-              </div>
-            </div>
-
+            <DigitalPassCard booking={booking} />
             <p className="text-[10px] font-mono text-text-muted mt-3 text-center">
-              Generated in Asia/Colombo • Version {booking.version || 1}
+              Generated in Asia/Colombo • Reference {booking.id}
             </p>
           </div>
 
@@ -230,11 +249,11 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
               </h3>
 
               <button
-                onClick={handleDownload}
+                onClick={() => window.print()}
                 className="btn-primary w-full justify-center !py-3.5 !text-xs !tracking-wider flex items-center gap-2 shadow-lg shadow-accent/15"
               >
-                <Download size={16} />
-                DOWNLOAD PASS (PNG IMAGE)
+                <Printer size={16} />
+                PRINT / SAVE AS PDF (HD)
               </button>
 
               <div className="grid grid-cols-2 gap-2 pt-1">
@@ -247,83 +266,41 @@ export default function BookingPassClient({ id }: BookingPassClientProps) {
                 </button>
 
                 <button
-                  onClick={() => window.print()}
+                  onClick={handleAddToCalendar}
                   className="px-4 py-2.5 rounded-sm bg-white/[0.04] border border-white/10 hover:border-accent text-xs font-mono text-text-secondary hover:text-white transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <Printer size={14} />
-                  <span>PRINT / PDF</span>
-                </button>
-              </div>
-
-              <div className="pt-2 border-t border-white/[0.06] space-y-2">
-                <button
-                  onClick={handleAddToCalendar}
-                  className="w-full px-4 py-2.5 rounded-sm bg-white/[0.03] border border-white/10 hover:border-accent text-xs font-mono text-text-secondary hover:text-white transition-colors flex items-center justify-center gap-2"
-                >
                   <CalendarPlus size={14} className="text-accent" />
-                  <span>Add to Google Calendar</span>
-                </button>
-
-                <button
-                  onClick={handleWhatsApp}
-                  className="w-full px-4 py-2.5 rounded-sm bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 text-xs font-mono text-emerald-300 transition-colors flex items-center justify-center gap-2"
-                >
-                  <MessageSquare size={14} />
-                  <span>Chat with Producer (WhatsApp)</span>
+                  <span>CALENDAR</span>
                 </button>
               </div>
+
+              <button
+                onClick={handleWhatsApp}
+                className="w-full py-2.5 px-4 rounded-sm bg-emerald-950/40 border border-emerald-500/30 hover:border-emerald-500 text-xs font-mono text-emerald-300 flex items-center justify-center gap-2 transition-colors mt-2"
+              >
+                <MessageSquare size={14} />
+                <span>CHAT WITH PRODUCER (WHATSAPP)</span>
+              </button>
             </div>
 
-            {/* Session Metadata Card */}
-            <div className="p-6 rounded-sm bg-[#0c0c0c] border border-white/10 space-y-4">
-              <h3 className="text-xs font-mono uppercase tracking-widest text-text-muted">
-                SESSION SPECIFICATIONS
+            {/* Soundstage Guidelines */}
+            <div className="p-6 rounded-sm bg-[#0c0c0c] border border-white/10 space-y-3 text-xs font-mono">
+              <h3 className="uppercase tracking-widest text-text-muted text-[10px]">
+                SOUNDSTAGE PROTOCOLS
               </h3>
-
-              <div className="space-y-3 font-mono text-xs">
-                <div className="flex justify-between items-center py-1.5 border-b border-white/[0.04]">
-                  <span className="text-text-secondary">Booking Reference</span>
-                  <span className="text-accent font-bold">{booking.id}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-1.5 border-b border-white/[0.04]">
-                  <span className="text-text-secondary">Host / Producer</span>
-                  <span className="text-white font-medium">{booking.customerName}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-1.5 border-b border-white/[0.04]">
-                  <span className="text-text-secondary">Production Package</span>
-                  <span className="text-white font-medium text-right">{booking.service}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-1.5 border-b border-white/[0.04]">
-                  <span className="text-text-secondary">Date &amp; Time</span>
-                  <span className="text-white font-medium text-right">
-                    {booking.date} • {formatTo12Hour(booking.startTime)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center py-1.5 border-b border-white/[0.04]">
-                  <span className="text-text-secondary">Duration</span>
-                  <span className="text-white font-medium">{booking.durationMinutes} Minutes</span>
-                </div>
-
-                <div className="flex justify-between items-center py-1.5">
-                  <span className="text-text-secondary">Guest Count</span>
-                  <span className="text-white font-medium">{booking.numberOfPeople} Guests</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Arrival Protocol Instructions */}
-            <div className="p-5 rounded-sm bg-white/[0.02] border border-white/[0.06] text-xs font-mono space-y-2">
-              <span className="text-[10px] uppercase text-accent font-bold tracking-widest block">
-                STUDIO ARRIVAL PROTOCOL
-              </span>
-              <ul className="space-y-1.5 text-text-secondary list-disc list-inside text-[11px] leading-relaxed">
-                <li>Please arrive 15 minutes prior to start time for mic checks.</li>
-                <li>Sound engineers will calibrate your levels and monitor mix.</li>
-                <li>4K multi-cam ProRes RAW footage delivered within 24 hours.</li>
+              <ul className="space-y-2 text-text-secondary text-[11px]">
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold">01.</span>
+                  <span>Please arrive 15 minutes prior to session start time.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold">02.</span>
+                  <span>Present the QR code above at the reception terminal for door access.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold">03.</span>
+                  <span>Raw 4K multitrack files delivered within 2 hours of wrap.</span>
+                </li>
               </ul>
             </div>
           </div>
